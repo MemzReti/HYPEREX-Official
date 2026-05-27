@@ -15,111 +15,130 @@
             align-items: center;
             height: 100vh;
         }
-        .chat-container {
-            width: 100%;
-            max-width: 600px;
-            height: 90vh;
+        /* Login / Server Select Screen */
+        #login-container {
+            background: #0a0a0a;
+            padding: 40px;
+            border: 1px solid #333;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+        }
+        #login-container h2 { margin-bottom: 20px; font-weight: normal; color: #aaa; }
+        #login-container input {
+            width: 100%; padding: 12px; margin-bottom: 15px; text-align: center; font-size: 18px;
+        }
+
+        /* Chat Interface */
+        #chat-container {
+            display: none; /* Hidden until connected */
+            width: 100%; max-width: 600px; height: 90vh;
             background: #0a0a0a;
             border: 1px solid #333;
             border-radius: 12px;
-            display: flex;
             flex-direction: column;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
         }
         .header {
-            padding: 20px;
-            border-bottom: 1px solid #222;
-            font-size: 24px;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
+            padding: 20px; border-bottom: 1px solid #222; font-size: 20px; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center;
         }
-        .messages {
-            flex-grow: 1;
-            padding: 20px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+        .leave-btn {
+            background: #440000; color: white; padding: 5px 10px; font-size: 12px; border-radius: 4px; border: none; cursor: pointer;
         }
-        .msg-block {
-            display: flex;
-            flex-direction: column;
-            max-width: 80%;
-        }
+        .leave-btn:hover { background: #ff3333; }
+        .messages { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .msg-block { display: flex; flex-direction: column; max-width: 80%; }
         .msg-block.left { align-self: flex-start; }
         .msg-block.right { align-self: flex-end; align-items: flex-end; }
         
         .sender { font-size: 12px; color: #888; margin-bottom: 4px; }
-        .bubble {
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 15px;
-            line-height: 1.4;
-        }
+        .bubble { padding: 12px 16px; border-radius: 12px; font-size: 15px; line-height: 1.4; }
         .left .bubble { background: #1a1a1a; border-top-left-radius: 2px; }
         .right .bubble { background: #005bb5; border-top-right-radius: 2px; }
+        .system .bubble { background: transparent; color: #ffcc00; font-style: italic; border: 1px solid #ffcc00; }
         
-        .input-area {
-            padding: 15px;
-            border-top: 1px solid #222;
-            display: flex;
-            gap: 10px;
-        }
-        input {
-            flex-grow: 1;
-            padding: 12px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            background: #111;
-            color: white;
-            outline: none;
-        }
+        .input-area { padding: 15px; border-top: 1px solid #222; display: flex; gap: 10px; }
+        input { flex-grow: 1; padding: 12px; border-radius: 6px; border: 1px solid #333; background: #111; color: white; outline: none; }
         input:focus { border-color: #005bb5; }
-        button {
-            padding: 12px 20px;
-            background: #ffffff;
-            color: #000;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.2s;
-        }
+        button { padding: 12px 20px; background: #ffffff; color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         button:hover { background: #ccc; }
     </style>
 </head>
 <body>
 
-<div class="chat-container">
+<div id="login-container">
+    <h2>📡 W.O.S. Secure Terminal</h2>
+    <input type="text" id="server-input" placeholder="Enter Server Name (e.g. Base1)" autocomplete="off">
+    <button onclick="joinServer()">Connect / Create</button>
+</div>
+
+<div id="chat-container">
     <div class="header">
-        <span>Chat 1</span>
-        <span style="color: #444; font-size: 14px; margin-top: 8px;">ENCRYPTED</span>
+        <span id="server-title">Server: </span>
+        <button class="leave-btn" onclick="leaveServer()">Disconnect</button>
     </div>
-    <div class="messages" id="message-board">
-        </div>
+    <div class="messages" id="message-board"></div>
     <div class="input-area">
-        <input type="text" id="msg-input" placeholder="Transmit to base..." autocomplete="off">
+        <input type="text" id="msg-input" placeholder="Transmit message..." autocomplete="off">
         <button onclick="sendMessage()">Send</button>
     </div>
 </div>
 
 <script>
-    // ⚠️ REPLACE THIS URL WITH YOUR MIDDLEMAN API / FIREBASE DATABASE URL
-    const API_URL = "https://your-middleman-api.com/messages";
+    // ⚠️ REPLACE ONLY THE FIRST PART OF THIS URL! Keep the empty quotes at the end.
+    const FIREBASE_BASE_URL = "https://your-firebase-project-default-rtdb.firebaseio.com/";
     
+    let currentServer = "";
+    let pollInterval = null;
+
+    const loginContainer = document.getElementById('login-container');
+    const chatContainer = document.getElementById('chat-container');
+    const serverTitle = document.getElementById('server-title');
     const board = document.getElementById('message-board');
-    const input = document.getElementById('msg-input');
+    const serverInput = document.getElementById('server-input');
+    const msgInput = document.getElementById('msg-input');
 
-    // Handle Enter key
-    input.addEventListener("keypress", function(event) {
-        if (event.key === "Enter") sendMessage();
-    });
+    // Handle Enter Keys
+    serverInput.addEventListener("keypress", (e) => { if (e.key === "Enter") joinServer(); });
+    msgInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
 
-    function appendMessage(sender, text, isWebUser) {
-        const block = document.createElement('div');
-        block.className = `msg-block ${isWebUser ? 'right' : 'left'}`;
+    function getApiUrl() {
+        // Formats the URL to target the specific server folder
+        return `${FIREBASE_BASE_URL}servers/${currentServer}.json`;
+    }
+
+    function joinServer() {
+        const srv = serverInput.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!srv) return alert("Please enter a valid alphanumeric server name.");
         
+        currentServer = srv;
+        loginContainer.style.display = "none";
+        chatContainer.style.display = "flex";
+        serverTitle.innerText = `Server: ${currentServer.toUpperCase()}`;
+        
+        board.innerHTML = ""; // Clear board
+        appendMessage("SYSTEM", `Connected to encrypted server: ${currentServer.toUpperCase()}`, false, true);
+        
+        // Start checking for messages
+        fetchMessages();
+        pollInterval = setInterval(fetchMessages, 2000);
+    }
+
+    function leaveServer() {
+        clearInterval(pollInterval);
+        currentServer = "";
+        serverInput.value = "";
+        chatContainer.style.display = "none";
+        loginContainer.style.display = "block";
+    }
+
+    function appendMessage(sender, text, isWebUser, isSystem = false) {
+        const block = document.createElement('div');
+        let align = isWebUser ? 'right' : 'left';
+        if (isSystem) align = 'system left';
+        
+        block.className = `msg-block ${align}`;
         block.innerHTML = `
             <div class="sender">${sender}</div>
             <div class="bubble">${text}</div>
@@ -129,41 +148,42 @@
     }
 
     async function sendMessage() {
-        const text = input.value.trim();
+        const text = msgInput.value.trim();
         if (!text) return;
         
-        // Optimistic UI update
         appendMessage("WebUser", text, true);
-        input.value = '';
+        msgInput.value = '';
 
-        // Push to database
         try {
-            await fetch(API_URL, {
+            await fetch(getApiUrl(), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ sender: "WebUser", text: text })
             });
-        } catch (e) {
-            console.error("Failed to send:", e);
-        }
+        } catch (e) { console.error("Send fail:", e); }
     }
 
-    // Polling the database every 2 seconds for new messages
+    let lastDataString = ""; // Prevents redrawing the screen if no new messages
+
     async function fetchMessages() {
         try {
-            const res = await fetch(API_URL);
+            const res = await fetch(getApiUrl());
             const data = await res.json();
             
-            board.innerHTML = ''; // Clear board
-            data.forEach(msg => {
+            if (!data) return; // No messages yet
+
+            const currentDataString = JSON.stringify(data);
+            if (currentDataString === lastDataString) return; // Nothing changed
+            lastDataString = currentDataString;
+
+            board.innerHTML = ''; // Redraw
+            appendMessage("SYSTEM", `Connected to encrypted server: ${currentServer.toUpperCase()}`, false, true);
+            
+            Object.values(data).forEach(msg => {
                 appendMessage(msg.sender, msg.text, msg.sender === "WebUser");
             });
-        } catch (e) {
-            // Silently fail if server is unreachable
-        }
+        } catch (e) {}
     }
-
-    setInterval(fetchMessages, 2000);
 </script>
 </body>
 </html>
